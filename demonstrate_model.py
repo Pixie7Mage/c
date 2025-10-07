@@ -117,7 +117,7 @@ def demonstrate_data_processing():
     print(f"        Column 6: Second strand indicator")
     
     # Print complete one-hot matrix in a readable format
-    print("\n🔢 Complete One-Hot Encoding Matrix:")
+    print("\n🔢 Complete 26*7 Embedding Matrix:")
     # Print column headers
     print("Pos  | A T G C GAP FST SEC | Interpretation")
     print("-" * 60)
