@@ -74,23 +74,8 @@ def bert_branch(inp, vocab_size, max_len, small_debug=False):
     # Expand position embedding to match batch size
     position_emb = layers.Lambda(lambda x: tf.expand_dims(x, 0))(position_emb)
     
-    # Segment embedding: [CLS]=0, sequence pairs=1, [SEP] and padding=0
-    # Create segment IDs: position 0 is CLS (segment 0), positions 1 to max_len-2 are sequence (segment 1),
-    # position max_len-1 is SEP (segment 0)
-    def create_segment_ids(max_len):
-        # Segment pattern: [0, 1, 1, 1, ..., 1, 0] where middle positions are segment 1
-        segment_ids = tf.concat([
-            tf.zeros([1], dtype=tf.int32),  # CLS token
-            tf.ones([max_len - 2], dtype=tf.int32),  # Sequence pairs
-            tf.zeros([1], dtype=tf.int32)  # SEP token
-        ], axis=0)
-        return segment_ids
-    
-    segment_input = layers.Lambda(lambda x: create_segment_ids(max_len))(inp)
-    segment_emb = layers.Embedding(2, embed_dim, name='segment_embedding')(segment_input)
-    
-    # Add all three embeddings (Token + Position + Segment)
-    x = layers.Add()([token_emb, position_emb, segment_emb])
+    # Add Token + Position embeddings
+    x = layers.Add()([token_emb, position_emb])
     
     # Pass through transformer blocks
     for _ in range(num_layers):

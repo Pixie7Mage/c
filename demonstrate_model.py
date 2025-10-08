@@ -1,4 +1,4 @@
-# demonstrate_model.py - Complete demonstration of model processing with one example
+﻿# demonstrate_model.py - Complete demonstration of model processing with one example
 import numpy as np
 import tensorflow as tf
 from data_process import load_dataset, MAX_LEN, VOCAB_SIZE, DatasetEncoder, make_pair_list
@@ -13,11 +13,11 @@ def demonstrate_data_processing():
     Demonstrate the complete data processing pipeline
     """
     print(f"\n" + "="*80)
-    print(f"📊 [DATA PROCESSING DEMONSTRATION]")
+    print(f" [DATA PROCESSING DEMONSTRATION]")
     print(f"="*80)
     
     # Load a small sample from the dataset
-    print(f"\n📁 [Loading Dataset] Loading sample from c.txt...")
+    print(f"\n[Loading Dataset] Loading sample from c.txt...")
     X_tokens, X_onehot, y = load_dataset("datasets/sam.txt")
     print(f"    Dataset loaded: {len(y)} samples")
     print(f"    Token sequences shape: {X_tokens.shape}")
@@ -30,23 +30,23 @@ def demonstrate_data_processing():
     onehot_mat = X_onehot[sample_idx]
     label = y[sample_idx]
     
-    print(f"\n🔍 [Sample Analysis] Analyzing sample {sample_idx}...")
+    print(f"\n [Sample Analysis] Analyzing sample {sample_idx}...")
     print(f"    Token sequence: {token_seq}")
     print(f"    One-hot matrix shape: {onehot_mat.shape}")
     print(f"    True label: {label} ({'Off-target' if label == 0 else 'On-target'})")
     
     # Show the original DNA sequences
-    print(f"\n🧬 [DNA Sequence Analysis]")
+    print(f"\n [DNA Sequence Analysis]")
     print(f"    This sample represents a DNA sequence pair for CRISPR off-target prediction")
     print(f"    The token sequence represents encoded DNA base pairs")
     print(f"    The one-hot matrix represents structural features of the DNA")
     
     # Decode the token sequence to show what it represents
-    print(f"\n🔤 [Token Decoding] Decoding token sequence...")
+    print(f"\n [Token Decoding] Decoding token sequence...")
     from data_process import index_to_token
     
     # Get complete token sequence
-    print(f"\n📝 Complete Token Sequence (length: {len(token_seq)}):")
+    print(f"\n Complete Token Sequence (length: {len(token_seq)}):")
     print("    " + " ".join([f"{i:2}" for i in range(len(token_seq))]))
     print("    " + "  ".join([f"{t:2}" for t in token_seq]))
     
@@ -79,14 +79,14 @@ def demonstrate_data_processing():
             token_meanings.append("Padding token")
     
     # Print token meanings in a table format
-    print("\n🔍 Token Details:")
+    print("\n Token Details:")
     print(f"{'Index':<8} | {'Token ID':<8} | {'Token':<8} | Description")
     print("-" * 70)
     for i, (token_id, token, meaning) in enumerate(zip(token_seq, decoded_tokens, token_meanings)):
         print(f"{i:<8} | {token_id:<8} | {token:<8} | {meaning}")
     
     # Show special tokens summary
-    print("\n📌 Special Tokens Summary:")
+    print("\n Special Tokens Summary:")
     cls_positions = [i for i, token in enumerate(token_seq) if token == 0]
     sep_positions = [i for i, token in enumerate(token_seq) if token == 1]
     pad_positions = [i for i, token in enumerate(token_seq) if token not in index_to_token and token != 0 and token != 1]
@@ -104,8 +104,8 @@ def demonstrate_data_processing():
     print(f"    Sequence: {' '.join([index_to_token[token] for token in actual_tokens])}")
     
     # Show one-hot matrix interpretation
-    print(f"\n🧮 [One-Hot Matrix Analysis]")
-    print(f"    Matrix dimensions: {onehot_mat.shape[0]} rows × {onehot_mat.shape[1]} columns")
+    print(f"\n [One-Hot Matrix Analysis]")
+    print(f"    Matrix dimensions: {onehot_mat.shape[0]} rows Ã— {onehot_mat.shape[1]} columns")
     print(f"    Why {onehot_mat.shape[0]} rows? MAX_LEN = {onehot_mat.shape[0]} (sequence length)")
     print(f"    Why {onehot_mat.shape[1]} columns? Each position has {onehot_mat.shape[1]} binary features:")
     print(f"        Column 0: A (Adenine) presence in base pair")
@@ -117,7 +117,7 @@ def demonstrate_data_processing():
     print(f"        Column 6: Second strand indicator")
     
     # Print complete one-hot matrix in a readable format
-    print("\n🔢 Complete 26*7 Embedding Matrix:")
+    print("\n Complete 26*7 Embedding Matrix:")
     # Print column headers
     print("Pos  | A T G C GAP FST SEC | Interpretation")
     print("-" * 60)
@@ -163,13 +163,13 @@ def demonstrate_data_processing():
         print(f"{i:3d} | {base_encoding} | {meta_encoding} | {interpretation}")
     
     # Print summary of one-hot encoding
-    print("\n📊 One-Hot Matrix Summary:")
+    print("\n One-Hot Matrix Summary:")
     print(f"    Total positions: {onehot_mat.shape[0]}")
     print(f"    Non-padding positions: {np.sum([np.any(row > 0) for row in onehot_mat])}")
     print(f"    Padding positions: {np.sum([not np.any(row > 0) for row in onehot_mat])}")
     
     # Show distribution of features
-    print("\n📈 Feature Distribution:")
+    print("\n Feature Distribution:")
     feature_names = ['A', 'T', 'G', 'C', 'GAP', 'FST', 'SEC']
     for i, name in enumerate(feature_names):
         count = np.sum(onehot_mat[:, i] > 0)
@@ -182,16 +182,19 @@ def demonstrate_segment_embedding():
     Demonstrate segment embedding functionality for DNA sequences
     """
     print(f"\n" + "="*80)
-    print(f"🧬 [SEGMENT EMBEDDING DEMONSTRATION]")
+    print(f"[SEGMENT EMBEDDING DEMONSTRATION]")
     print(f"="*80)
     
-    # Example DNA sequence pair
-    seq1 = "GCTGCCAGTACAGGCTCCCCCTCG"  # sgRNA sequence
-    seq2 = "GCAGCCAGTACA_GCTCACCATGG"  # target sequence
+    # Load DNA sequence pair from sam.txt
+    print(f"\n[Loading Sequences from sam.txt]")
+    with open("datasets/sam.txt", "r") as f:
+        line = f.readline().strip()
+        seq1, seq2, label = line.split(",")
     
-    print(f"\n📝 [Input Sequences]")
+    print(f"\n[Input Sequences]")
     print(f"    sgRNA sequence: {seq1}")
     print(f"    Target sequence: {seq2}")
+    print(f"    Label: {label}")
     print(f"    Sequence lengths: {len(seq1)} and {len(seq2)}")
     
     # Create pair list and tokenize
@@ -200,40 +203,16 @@ def demonstrate_segment_embedding():
     enc = DatasetEncoder()
     token_sequence = enc.encode_token_list(pair_list)
     
-    print(f"\n🔤 [Token Sequence]")
+    print(f"\n[Token Sequence]")
     print(f"    Token sequence: {token_sequence}")
     print(f"    Length: {len(token_sequence)}")
     
-    # Create segment IDs
-    print(f"\n🏷  [Segment ID Creation]")
-    segment_ids = []
-    
-    # CLS token gets segment 0
-    segment_ids.append(0)
-    
-    # First half of DNA sequence (sgRNA) gets segment 0
-    sgRNA_length = len(seq1)
-    for i in range(sgRNA_length):
-        segment_ids.append(0)
-    
-    # SEP token gets segment 1
-    segment_ids.append(1)
-    
-    # Second half of DNA sequence (target) gets segment 1
-    target_length = len(seq2)
-    for i in range(target_length):
-        segment_ids.append(1)
-    
-    # PAD tokens get segment 2
-    remaining_length = MAX_LEN - len(segment_ids)
-    for i in range(remaining_length):
-        segment_ids.append(2)
-    
-    print(f"    Segment IDs: {segment_ids}")
-    print(f"    Segment ID length: {len(segment_ids)}")
+    # Create segment IDs - all zeros for length 26
+    print(f"\n[Segment ID Creation]")
+    segment_ids = [0] * 26  # All segment IDs are 0
     
     # Show segment mapping
-    print(f"\n📊 [Segment Mapping]")
+    print(f"\n[Segment Mapping]")
     print("Position | Token ID | Token | Segment | Description")
     print("-" * 70)
     for i, (token_id, segment_id) in enumerate(zip(token_sequence, segment_ids)):
@@ -250,44 +229,32 @@ def demonstrate_segment_embedding():
             token_str = "[PAD]"
             description = "Padding token"
         
-        segment_name = {0: "sgRNA", 1: "target", 2: "padding"}[segment_id]
-        print(f"{i:8} | {token_id:8} | {token_str:6} | {segment_id:7} | {segment_name} - {description}")
-    
-    # Show segment statistics
-    print(f"\n📈 [Segment Statistics]")
-    segment_counts = {0: 0, 1: 0, 2: 0}
-    for seg_id in segment_ids:
-        segment_counts[seg_id] += 1
-    
-    print(f"    sgRNA segment (0): {segment_counts[0]} tokens")
-    print(f"    target segment (1): {segment_counts[1]} tokens")
-    print(f"    padding segment (2): {segment_counts[2]} tokens")
+        print(f"{i:8} | {token_id:8} | {token_str:6} | {segment_id:7} | {description}")
     
     # Demonstrate embedding dimensions
-    print(f"\n🔢 [Embedding Dimensions]")
+    print(f"\n[Embedding Dimensions]")
     embed_dim = 128  # Small debug mode
     print(f"    Token embedding dimension: {embed_dim}")
     print(f"    Position embedding dimension: {embed_dim}")
     print(f"    Segment embedding dimension: {embed_dim}")
     print(f"    Combined embedding dimension: {embed_dim}")
+    print(f"    Sequence length: 26")
     
     # Show how segment embeddings would be created
-    print(f"\n🎯 [Segment Embedding Matrix]")
-    print(f"    Segment embedding shape: (3, {embed_dim})")
-    print(f"    Segment 0 (sgRNA): Random vector of shape ({embed_dim},)")
-    print(f"    Segment 1 (target): Random vector of shape ({embed_dim},)")
-    print(f"    Segment 2 (padding): Random vector of shape ({embed_dim},)")
+    print(f"\n[Segment Embedding Matrix]")
+    print(f"    Segment embedding shape: (1, {embed_dim})")
+    print(f"    Segment 0: Learnable vector of shape ({embed_dim},)")
+    print(f"    All positions use segment 0 embedding")
     
-    print(f"\n💡 [How Segment Embeddings Work]")
-    print(f"    1. Each segment gets a unique learnable embedding vector")
-    print(f"    2. These vectors are added to token embeddings")
-    print(f"    3. Model learns to associate different segments with different meanings")
-    print(f"    4. Helps distinguish between sgRNA and target sequences")
-    print(f"    5. Improves model's understanding of sequence boundaries")
+    print(f"\n[How Segment Embeddings Work]")
+    print(f"    1. All 26 positions use the same segment embedding (segment 0)")
+    print(f"    2. Segment embedding vector is added to token embeddings")
+    print(f"    3. Combined with position embeddings of length 26")
+    print(f"    4. Final embedding = Token[26,{embed_dim}] + Position[26,{embed_dim}] + Segment[26,{embed_dim}]")
     
-    print(f"\n✅ [Segment Embedding Complete]")
-    print(f"    This demonstrates how segment embeddings help the model")
-    print(f"    understand the structure of DNA sequence pairs")
+    print(f"\n[Segment Embedding Complete]")
+    print(f"    Segment IDs: All zeros (length 26)")
+    print(f"    This matches the token and position embedding dimensions")
     
     return token_sequence, segment_ids
 
@@ -296,54 +263,55 @@ def demonstrate_position_embedding():
     Demonstrate position embedding functionality for DNA sequences
     """
     print(f"\n" + "="*80)
-    print(f"📍 [POSITION EMBEDDING DEMONSTRATION]")
+    print(f"[POSITION EMBEDDING DEMONSTRATION]")
     print(f"="*80)
     
-    print(f"\n📝 [Position Embedding Overview]")
+    print(f"\n[Position Embedding Overview]")
     print(f"    Position embeddings encode the position of each token in the sequence")
     print(f"    Each position gets a unique learnable embedding vector")
     print(f"    Helps the model understand the order and relative positions of tokens")
     
     # Show position IDs for our example
-    print(f"\n🔢 [Position ID Creation]")
-    position_ids = list(range(MAX_LEN))
+    print(f"\n[Position ID Creation]")
+    position_ids = list(range(26))
     print(f"    Position IDs: {position_ids}")
-    print(f"    Position ID range: 0 to {MAX_LEN-1}")
+    print(f"    Position ID range: 0 to 25")
+    print(f"    Sequence length: 26")
     
     # Show how position embeddings would work
-    print(f"\n🎯 [Position Embedding Matrix]")
+    print(f"\n[Position Embedding Matrix]")
     embed_dim = 128  # Small debug mode
-    print(f"    Position embedding shape: ({MAX_LEN}, {embed_dim})")
+    print(f"    Position embedding shape: (26, {embed_dim})")
     print(f"    Each position gets a unique {embed_dim}-dimensional vector")
     
     # Show first few positions
-    print(f"\n📊 [Position Embedding Examples]")
+    print(f"\n[Position Embedding Examples]")
     print("Position | Description | Embedding Shape")
     print("-" * 50)
-    for i in range(min(10, MAX_LEN)):
+    for i in range(min(10, 26)):
         if i == 0:
-            description = "CLS token position"
-        elif i == MAX_LEN - 1:
-            description = "Last position"
-        elif i < 13:  # Approximate sgRNA length
-            description = f"sgRNA position {i}"
+            description = "Position 0"
+        elif i == 25:
+            description = "Last position (25)"
         else:
-            description = f"target/padding position {i}"
+            description = f"Position {i}"
         print(f"{i:8} | {description:20} | ({embed_dim},)")
     
-    print(f"\n💡 [How Position Embeddings Work]")
+    print(f"\n[How Position Embeddings Work]")
     print(f"    1. Each position in the sequence gets a unique embedding")
     print(f"    2. Position embeddings are learned during training")
     print(f"    3. Model learns position-specific patterns and relationships")
     print(f"    4. Helps distinguish between tokens at different positions")
     print(f"    5. Enables the model to understand sequence order")
     
-    print(f"\n🔄 [Combined Embeddings]")
+    print(f"\n[Combined Embeddings]")
     print(f"    Final embedding = Token Embedding + Position Embedding + Segment Embedding")
     print(f"    All three embeddings have the same dimension: {embed_dim}")
+    print(f"    All three embeddings have the same length: 26")
     print(f"    They are added together element-wise")
     
-    print(f"\n✅ [Position Embedding Complete]")
+    print(f"\n[Position Embedding Complete]")
+    print(f"    Position IDs: 0 to 25 (length 26)")
     print(f"    This demonstrates how position embeddings help the model")
     print(f"    understand the sequential nature of DNA sequences")
     
@@ -354,16 +322,19 @@ def demonstrate_complete_embedding():
     Demonstrate how token, position, and segment embeddings work together
     """
     print(f"\n" + "="*80)
-    print(f"🔗 [COMPLETE EMBEDDING DEMONSTRATION]")
+    print(f"[COMPLETE EMBEDDING DEMONSTRATION]")
     print(f"="*80)
     
-    # Example DNA sequence pair
-    seq1 = "GCTGCCAGTACAGGCTCCCCCTCG"  # sgRNA sequence
-    seq2 = "GCAGCCAGTACA_GCTCACCATGG"  # target sequence
+    # Load DNA sequence pair from sam.txt
+    print(f"\n[Loading Sequences from sam.txt]")
+    with open("datasets/sam.txt", "r") as f:
+        line = f.readline().strip()
+        seq1, seq2, label = line.split(",")
     
-    print(f"\n📝 [Input Sequences]")
+    print(f"\n[Input Sequences]")
     print(f"    sgRNA: {seq1}")
     print(f"    target: {seq2}")
+    print(f"    Label: {label}")
     
     # Create all components
     from data_process import make_pair_list, DatasetEncoder, index_to_token
@@ -371,35 +342,27 @@ def demonstrate_complete_embedding():
     enc = DatasetEncoder()
     token_sequence = enc.encode_token_list(pair_list)
     
-    # Create segment IDs (same logic as before)
-    segment_ids = []
-    segment_ids.append(0)  # CLS
-    for i in range(len(seq1)):  # sgRNA
-        segment_ids.append(0)
-    segment_ids.append(1)  # SEP
-    for i in range(len(seq2)):  # target
-        segment_ids.append(1)
-    # PAD tokens
-    remaining = MAX_LEN - len(segment_ids)
-    for i in range(remaining):
-        segment_ids.append(2)
+    # Create segment IDs - all zeros for length 26
+    segment_ids = [0] * 26
     
     # Position IDs
-    position_ids = list(range(MAX_LEN))
+    position_ids = list(range(26))
     
-    print(f"\n🔢 [Embedding Components]")
+    print(f"\n[Embedding Components]")
     embed_dim = 128
     print(f"    Embedding dimension: {embed_dim}")
-    print(f"    Token embedding shape: ({len(token_sequence)}, {embed_dim})")
-    print(f"    Position embedding shape: ({len(position_ids)}, {embed_dim})")
-    print(f"    Segment embedding shape: ({len(segment_ids)}, {embed_dim})")
+    print(f"    Sequence length: 26")
+    print(f"    Token embedding shape: (26, {embed_dim})")
+    print(f"    Position embedding shape: (26, {embed_dim})")
+    print(f"    Segment embedding shape: (26, {embed_dim})")
+    print(f"    All segment IDs are 0")
     
     # Show detailed breakdown for first few positions
-    print(f"\n📊 [Detailed Embedding Breakdown]")
+    print(f"\n[Detailed Embedding Breakdown]")
     print("Pos | Token | Token ID | Position | Segment | Combined Embedding")
     print("-" * 80)
     
-    for i in range(min(10, MAX_LEN)):
+    for i in range(min(10, 26)):
         token_id = token_sequence[i]
         position_id = position_ids[i]
         segment_id = segment_ids[i]
@@ -414,32 +377,29 @@ def demonstrate_complete_embedding():
         else:
             token_str = "[PAD]"
         
-        # Get segment name
-        segment_name = {0: "sgRNA", 1: "target", 2: "padding"}[segment_id]
-        
         print(f"{i:3} | {token_str:5} | {token_id:8} | {position_id:8} | {segment_id:7} | Token + Pos + Seg = {embed_dim}D")
     
-    print(f"\n🎯 [Embedding Combination Process]")
+    print(f"\n[Embedding Combination Process]")
     print(f"    1. Token Embedding: Lookup token ID in embedding table")
     print(f"    2. Position Embedding: Lookup position ID in position table")
     print(f"    3. Segment Embedding: Lookup segment ID in segment table")
     print(f"    4. Element-wise Addition: E_final = E_token + E_position + E_segment")
     print(f"    5. Layer Normalization: Normalize the combined embedding")
     
-    print(f"\n💡 [Why This Works]")
-    print(f"    • Token embeddings capture DNA base pair meanings")
-    print(f"    • Position embeddings capture sequence order and position")
-    print(f"    • Segment embeddings distinguish sgRNA from target sequences")
-    print(f"    • Combined embeddings provide rich contextual information")
-    print(f"    • Model can learn complex DNA sequence relationships")
+    print(f"\n  [Why This Works]")
+    print(f"    Token embeddings capture DNA base pair meanings")
+    print(f"    Position embeddings capture sequence order and position")
+    print(f"    Segment embeddings provide consistent context (all segment 0)")
+    print(f"    Combined embeddings provide rich contextual information")
+    print(f"    Model can learn complex DNA sequence relationships")
     
-    print(f"\n🔬 [CRISPR-Specific Benefits]")
-    print(f"    • Segment embeddings help model distinguish sgRNA vs target")
-    print(f"    • Position embeddings help identify binding sites")
-    print(f"    • Token embeddings capture base pair interactions")
-    print(f"    • Combined information improves off-target prediction")
+    print(f"\n[CRISPR-Specific Benefits]")
+    print(f"    All positions use the same segment embedding (segment 0)")
+    print(f"    Position embeddings help identify binding sites")
+    print(f"    Token embeddings capture base pair interactions")
+    print(f"    Combined information improves off-target prediction")
     
-    print(f"\n✅ [Complete Embedding Demonstration Complete]")
+    print(f"\n [Complete Embedding Demonstration Complete]")
     
     return token_sequence, position_ids, segment_ids
 
@@ -448,23 +408,23 @@ def demonstrate_model_architecture():
     Demonstrate the model architecture in detail
     """
     print(f"\n" + "="*80)
-    print(f"🏗  [MODEL ARCHITECTURE DEMONSTRATION]")
+    print(f"[MODEL ARCHITECTURE DEMONSTRATION]")
     print(f"="*80)
     
-    print(f"\n📋 [Model Configuration]")
+    print(f"\n[Model Configuration]")
     print(f"    Vocabulary size: {VOCAB_SIZE}")
     print(f"    Maximum sequence length: {MAX_LEN}")
     print(f"    Model type: Hybrid CNN-BERT architecture")
     print(f"    Purpose: CRISPR-Cas9 off-target prediction")
     
-    print(f"\n🔬 [CNN Branch Details]")
+    print(f"\n[CNN Branch Details]")
     print(f"    Input: One-hot encoded DNA sequences ({MAX_LEN} x 7)")
-    print(f"    Convolution layers: 4 parallel Conv2D with kernel sizes [5, 15, 25, 35]")
-    print(f"    Filters per conv: 80")
+    print(f"    Convolution layers: 4 parallel Conv2D with kernels (1,1), (2,2), (3,3), (5,5)")
+    print(f"    Filters per conv: 5, 15, 25, 35 (total 80 channels)")
     print(f"    Activation: ReLU")
     print(f"    Purpose: Capture local DNA sequence patterns")
     
-    print(f"\n🤖 [BERT Branch Details]")
+    print(f"\[BERT Branch Details]")
     print(f"    Input: Tokenized DNA sequences ({MAX_LEN} tokens)")
     print(f"    Embedding dimension: 128 (small debug mode)")
     print(f"    Transformer layers: 2")
@@ -472,39 +432,39 @@ def demonstrate_model_architecture():
     print(f"    Feed-forward dimension: 256")
     print(f"    Purpose: Capture long-range dependencies")
     
-    print(f"\n🧬 [Embedding Components]")
+    print(f"\n[Embedding Components]")
     print(f"    Token Embedding: Maps each DNA token to dense vector")
     print(f"    Position Embedding: Encodes position information in sequence")
     print(f"    Segment Embedding: Distinguishes between different sequence parts")
     print(f"    Combined Embedding: Sum of all three embeddings")
     
-    print(f"\n📊 [Segment Embedding Details]")
+    print(f"\n[Segment Embedding Details]")
     print(f"    Segment 0: CLS token and first DNA sequence (sgRNA)")
     print(f"    Segment 1: SEP token and second DNA sequence (target)")
     print(f"    Segment 2: PAD tokens (padding)")
     print(f"    Purpose: Helps model understand sequence boundaries")
     
-    print(f"\n🔄 [GRU Processing]")
-    print(f"    Both branches processed through Bidirectional GRU")
-    print(f"    GRU units: 40 per direction (80 total)")
+    print(f"\n[GRU Processing]")
+    print(f"    Both branches processed through Custom Bidirectional GRU")
+    print(f"    BiGRU units: 40 per direction (80 total)")
     print(f"    Purpose: Sequence modeling and temporal dependencies")
     
-    print(f"\n🔗 [Fusion Strategy]")
+    print(f"\n[Fusion Strategy]")
     print(f"    CNN contribution: 20% (0.2x weight)")
     print(f"    BERT contribution: 80% (0.8x weight)")
     print(f"    Fusion method: Weighted addition")
     
-    print(f"\n🎯 [Classification Head]")
+    print(f"\n[Classification Head]")
     print(f"    Dense layer 1: 128 units, ReLU")
     print(f"    Dense layer 2: 64 units, ReLU")
     print(f"    Dropout: 0.35")
     print(f"    Output: 2 units, Softmax (On-target vs Off-target)")
     
     # Build the model
-    print(f"\n🏗  [Building Model] Creating the model...")
+    print(f"\n[Building Model] Creating the model...")
     model = build_crispr_bert_model(vocab_size=VOCAB_SIZE, max_len=MAX_LEN, small_debug=True)
     
-    print(f"\n📊 [Model Summary]")
+    print(f"\nðŸ“Š [Model Summary]")
     model.summary()
     
     return model
@@ -514,10 +474,10 @@ def demonstrate_training_process():
     Demonstrate a simplified training process
     """
     print(f"\n" + "="*80)
-    print(f"🚀 [TRAINING PROCESS DEMONSTRATION]")
+    print(f"[TRAINING PROCESS DEMONSTRATION]")
     print(f"="*80)
     
-    print(f"\n📊 [Data Preparation]")
+    print(f"\n[Data Preparation]")
     print(f"    Loading training data...")
     X_tokens, X_onehot, y = load_dataset("datasets/c.txt")
     
@@ -542,7 +502,7 @@ def demonstrate_training_process():
     print(f"    Validation samples: {len(yv)}")
     
     # Build and compile model
-    print(f"\n🏗  [Model Setup]")
+    print(f"\n[Model Setup]")
     model = build_crispr_bert_model(vocab_size=VOCAB_SIZE, max_len=MAX_LEN, small_debug=True)
     model.compile(
         optimizer="adam", 
@@ -555,7 +515,7 @@ def demonstrate_training_process():
     print(f"    Metrics: accuracy")
     
     # Quick training for demonstration
-    print(f"\n🚀 [Quick Training] Training for 3 epochs...")
+    print(f"\n [Quick Training] Training for 3 epochs...")
     print(f"    This is a demonstration - full training would use more epochs")
     
     history = model.fit(
@@ -566,7 +526,7 @@ def demonstrate_training_process():
         verbose=1
     )
     
-    print(f"\n✅ [Training Complete]")
+    print(f"\n[Training Complete]")
     print(f"    Final training accuracy: {history.history['accuracy'][-1]:.4f}")
     print(f"    Final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
     
@@ -576,7 +536,7 @@ def main_demonstration():
     """
     Main demonstration function
     """
-    print(f"\n🎯 [MAIN DEMONSTRATION] Starting complete model demonstration...")
+    print(f"\n[MAIN DEMONSTRATION] Starting complete model demonstration...")
     
     # Step 1: Data Processing
     token_input, onehot_input, true_label = demonstrate_data_processing()
@@ -598,13 +558,13 @@ def main_demonstration():
     
     # Step 4: Single Example Prediction
     print(f"\n" + "="*80)
-    print(f"🎯 [SINGLE EXAMPLE PREDICTION]")
+    print(f"[SINGLE EXAMPLE PREDICTION]")
     print(f"="*80)
     
-    print(f"\n🔍 [Making Prediction] Using trained model on sample...")
+    print(f"\n[Making Prediction] Using trained model on sample...")
     prediction = predict_single_example(trained_model, token_input, onehot_input, true_label)
     
-    print(f"\n📊 [Prediction Summary]")
+    print(f"\n[Prediction Summary]")
     print(f"    Input shape: Token {token_input.shape}, One-hot {onehot_input.shape}")
     print(f"    True label: {true_label}")
     print(f"    Predicted probabilities: {prediction[0]}")
@@ -613,17 +573,17 @@ def main_demonstration():
     
     # Step 5: Model Interpretation
     print(f"\n" + "="*80)
-    print(f"🧠 [MODEL INTERPRETATION]")
+    print(f"[MODEL INTERPRETATION]")
     print(f"="*80)
     
-    print(f"\n💡 [What the Model Learned]")
+    print(f"\n[What the Model Learned]")
     print(f"    The model combines two types of information:")
     print(f"    1. CNN branch: Local DNA sequence patterns and motifs")
     print(f"    2. BERT branch: Long-range dependencies and context")
     print(f"    The GRU layers capture temporal relationships in the sequence")
     print(f"    The fusion layer combines both perspectives for final prediction")
     
-    print(f"\n🎯 [Prediction Confidence]")
+    print(f"\n[Prediction Confidence]")
     confidence = np.max(prediction[0])
     if confidence > 0.8:
         print(f"    High confidence prediction ({confidence:.4f})")
@@ -632,7 +592,7 @@ def main_demonstration():
     else:
         print(f"    Low confidence prediction ({confidence:.4f})")
     
-    print(f"\n✅ [DEMONSTRATION COMPLETE]")
+    print(f"\n[DEMONSTRATION COMPLETE]")
     print(f"    This demonstration showed:")
     print(f"    1. How DNA sequences are processed and encoded")
     print(f"    2. The hybrid CNN-BERT model architecture")

@@ -57,33 +57,23 @@ def inception_cnn_branch(inp, max_len=26):
     print(f"    [CNN Branch] Input shape: {inp.shape}")
     print(f"    [CNN Branch] Max sequence length: {max_len}")
     
-    # Expand dims to 4D for Conv2D: (batch, time=max_len, channels=7, 1)
-    x4d = layers.Lambda(lambda t: tf.expand_dims(t, axis=-1))(inp)
+    # Match model.py: expand to 4D and apply parallel Conv2D with kernels (1,1),(2,2),(3,3),(5,5)
+    x4d = layers.Lambda(lambda t: tf.expand_dims(t, axis=-1))(inp)  # (batch, max_len, 7, 1)
     print(f"    [CNN Branch] Expanded to 4D for Conv2D: {x4d.shape}")
 
-    convs = []
-    kernel_sizes = [5, 15, 25, 35]
-    print(f"    [CNN Branch] Using kernel sizes: {kernel_sizes}")
-    
-    for i, k in enumerate(kernel_sizes):
-        # Compute asymmetric padding to preserve time length like padding='same' in Conv1D
-        p_left = k // 2
-        p_right = k - 1 - p_left
-        print(f"    [CNN Branch] Conv2D {i+1}/4: kernel=(" + str(k) + ", 7), filters=80, time-padding=({p_left},{p_right}), width-padding=(0,0), activation='relu'")
-        padded = layers.ZeroPadding2D(padding=((p_left, p_right), (0, 0)))(x4d)
-        c2d = layers.Conv2D(filters=80, kernel_size=(k, 7), padding='valid', activation='relu')(padded)
-        # c2d shape: (batch, time, 1, 80) -> squeeze width dim to get (batch, time, 80)
-        c = layers.Lambda(lambda t: tf.squeeze(t, axis=2))(c2d)
-        print(f"    [CNN Branch] Conv2D {i+1}/4 output shape (after squeeze): {c.shape}")
-        convs.append(c)
-    
-    print(f"    [CNN Branch] Concatenating {len(convs)} convolution outputs...")
-    x = layers.Concatenate()(convs)
-    print(f"    [CNN Branch] Concatenated shape: {x.shape}")
-    
-    print(f"    [CNN Branch] Dense layer: 80 units with ReLU activation...")
-    x = layers.Dense(80, activation="relu")(x)
-    print(f"    [CNN Branch] Final CNN output shape: {x.shape}")
+    print(f"    [CNN Branch] Applying parallel Conv2D filters: [(1,1)->5, (2,2)->15, (3,3)->25, (5,5)->35]")
+    conv1 = layers.Conv2D(5, (1, 1), padding='same', activation='relu')(x4d)
+    conv2 = layers.Conv2D(15, (2, 2), padding='same', activation='relu')(x4d)
+    conv3 = layers.Conv2D(25, (3, 3), padding='same', activation='relu')(x4d)
+    conv4 = layers.Conv2D(35, (5, 5), padding='same', activation='relu')(x4d)
+
+    merged = layers.Concatenate(axis=-1)([conv1, conv2, conv3, conv4])  # (batch, max_len, 7, 80)
+    print(f"    [CNN Branch] Concatenated feature maps shape: {merged.shape}")
+
+    # Collapse width dimension (7 features) to (batch, max_len, 80), as in model.py
+    collapsed = layers.Lambda(lambda t: tf.reduce_max(t, axis=2))(merged)  # (batch, max_len, 80)
+    x = layers.Reshape((max_len, 80))(collapsed)
+    print(f"    [CNN Branch] Collapsed output shape: {x.shape}")
     return x
 
 def bert_branch(inp, vocab_size, max_len, small_debug=False):
@@ -100,15 +90,30 @@ def bert_branch(inp, vocab_size, max_len, small_debug=False):
     
     print(f"    [BERT Branch] Configuration: embed_dim={embed_dim}, num_heads={num_heads}, ff_dim={ff_dim}, num_layers={num_layers}")
     
+    # Step 1: Token, Position, and Segment embeddings (as in model.py)
     print(f"    [BERT Branch] Step 1: Token embedding...")
-    x = layers.Embedding(vocab_size, embed_dim)(inp)
-    print(f"    [BERT Branch] Embedding output shape: {x.shape}")
+    token_emb = layers.Embedding(vocab_size, embed_dim, name='token_embedding')(inp)
+    print(f"    [BERT Branch] Token embedding shape: {token_emb.shape}")
+
+    print(f"    [BERT Branch] Step 1b: Position embedding...")
+    position_indices = tf.range(start=0, limit=max_len, delta=1)
+    position_emb = layers.Embedding(max_len, embed_dim, name='position_embedding')(position_indices)
+    position_emb = layers.Lambda(lambda x: tf.expand_dims(x, 0))(position_emb)
+    # Tile to match batch size of token_emb: from (1, max_len, embed_dim) -> (batch, max_len, embed_dim)
+    position_emb = layers.Lambda(lambda args: tf.tile(args[0], [tf.shape(args[1])[0], 1, 1]))([position_emb, token_emb])
+    print(f"    [BERT Branch] Position embedding shape (broadcasted): {position_emb.shape}")
+
+    print(f"    [BERT Branch] Step 1c: Add Token + Position embeddings...")
+    x = layers.Add()([token_emb, position_emb])
+    print(f"    [BERT Branch] Combined embedding shape: {x.shape}")
     
+    # Step 2: Transformer blocks
     print(f"    [BERT Branch] Step 2: Processing through {num_layers} Transformer blocks...")
     for i in range(num_layers):
         print(f"    [BERT Branch] Transformer Block {i+1}/{num_layers}:")
         x = TransformerBlock(embed_dim, num_heads, ff_dim)(x)
     
+    # Step 3: Final projection to match CNN branch
     print(f"    [BERT Branch] Step 3: Final dense layer...")
     x = layers.Dense(80, activation="relu")(x)
     print(f"    [BERT Branch] Final BERT output shape: {x.shape}")
@@ -130,13 +135,90 @@ def build_crispr_bert_model(vocab_size, max_len, small_debug=False):
     x_cnn = inception_cnn_branch(inp_hot, max_len=max_len)
     x_bert = bert_branch(inp_tok, vocab_size, max_len, small_debug=small_debug)
 
-    print(f"\n🔄 [GRU Processing] Bidirectional GRU layers...")
-    print(f"    [GRU] CNN branch GRU: 40 units, bidirectional...")
-    x_cnn = layers.Bidirectional(layers.GRU(40, return_sequences=False))(x_cnn)
+    print(f"\n🔄 [GRU Processing] Custom Bidirectional GRU layers...")
+
+    # Custom GRU cell and Bidirectional implementation (mirrors model.py)
+    class CustomGRUCell(layers.Layer):
+        """Custom GRU cell with update/reset gates and candidate hidden state"""
+        def __init__(self, units, **kwargs):
+            super().__init__(**kwargs)
+            self.units = units
+            self.state_size = units
+        def build(self, input_shape):
+            input_dim = input_shape[-1]
+            self.W_z = self.add_weight(shape=(input_dim, self.units), initializer='glorot_uniform', name='W_z')
+            self.U_z = self.add_weight(shape=(self.units, self.units), initializer='orthogonal', name='U_z')
+            self.b_z = self.add_weight(shape=(self.units,), initializer='zeros', name='b_z')
+            self.W_r = self.add_weight(shape=(input_dim, self.units), initializer='glorot_uniform', name='W_r')
+            self.U_r = self.add_weight(shape=(self.units, self.units), initializer='orthogonal', name='U_r')
+            self.b_r = self.add_weight(shape=(self.units,), initializer='zeros', name='b_r')
+            self.W_h = self.add_weight(shape=(input_dim, self.units), initializer='glorot_uniform', name='W_h')
+            self.U_h = self.add_weight(shape=(self.units, self.units), initializer='orthogonal', name='U_h')
+            self.b_h = self.add_weight(shape=(self.units,), initializer='zeros', name='b_h')
+            super().build(input_shape)
+        def call(self, inputs, states):
+            h_prev = states[0]
+            z = tf.sigmoid(tf.matmul(inputs, self.W_z) + tf.matmul(h_prev, self.U_z) + self.b_z)
+            r = tf.sigmoid(tf.matmul(inputs, self.W_r) + tf.matmul(h_prev, self.U_r) + self.b_r)
+            h_tilde = tf.tanh(tf.matmul(inputs, self.W_h) + tf.matmul(r * h_prev, self.U_h) + self.b_h)
+            h = (1 - z) * h_prev + z * h_tilde
+            return h, [h]
+        def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+            # Gracefully handle dynamic batch size and dtype provided by Keras RNN
+            if inputs is not None:
+                inferred_batch = tf.shape(inputs)[0]
+                inferred_dtype = inputs.dtype
+            else:
+                inferred_batch = 0 if batch_size is None else batch_size
+                inferred_dtype = tf.float32 if dtype is None else dtype
+            bsz = batch_size if batch_size is not None else inferred_batch
+            dt = dtype if dtype is not None else inferred_dtype
+            return [tf.zeros((bsz, self.units), dtype=dt)]
+
+    class CustomBiGRU(layers.Layer):
+        """Bidirectional GRU using the custom GRU cell"""
+        def __init__(self, units, return_sequences=False, **kwargs):
+            super().__init__(**kwargs)
+            self.units = units
+            self.return_sequences = return_sequences
+        def build(self, input_shape):
+            self.forward_gru = layers.RNN(
+                CustomGRUCell(self.units),
+                return_sequences=self.return_sequences,
+                return_state=False,
+                go_backwards=False,
+                name='forward_gru'
+            )
+            self.backward_gru = layers.RNN(
+                CustomGRUCell(self.units),
+                return_sequences=self.return_sequences,
+                return_state=False,
+                go_backwards=True,
+                name='backward_gru'
+            )
+            super().build(input_shape)
+        def call(self, inputs, training=False, mask=None):
+            forward_output = self.forward_gru(inputs, training=training, mask=mask)
+            backward_output = self.backward_gru(inputs, training=training, mask=mask)
+            output = tf.concat([forward_output, backward_output], axis=-1)
+            return output
+
+        def compute_output_shape(self, input_shape):
+            # input_shape: (batch, timesteps, features)
+            batch = input_shape[0]
+            time = input_shape[1]
+            feat = 2 * self.units
+            if self.return_sequences:
+                return (batch, time, feat)
+            else:
+                return (batch, feat)
+
+    print(f"    [GRU] CNN branch GRU: 40 units per direction (custom BiGRU)...")
+    x_cnn = CustomBiGRU(40, return_sequences=False)(x_cnn)
     print(f"    [GRU] CNN branch GRU output shape: {x_cnn.shape}")
-    
-    print(f"    [GRU] BERT branch GRU: 40 units, bidirectional...")
-    x_bert = layers.Bidirectional(layers.GRU(40, return_sequences=False))(x_bert)
+
+    print(f"    [GRU] BERT branch GRU: 40 units per direction (custom BiGRU)...")
+    x_bert = CustomBiGRU(40, return_sequences=False)(x_bert)
     print(f"    [GRU] BERT branch GRU output shape: {x_bert.shape}")
 
     print(f"\n🔗 [Fusion Layer] Combining branches with weighted fusion...")
@@ -167,166 +249,163 @@ def build_crispr_bert_model(vocab_size, max_len, small_debug=False):
 
 def predict_single_example(model, token_input, onehot_input, label=None):
     """
-    Predict on a single example with detailed step-by-step output
+    Predict on a single example with simplified layer-by-layer analysis
     """
     print(f"\n" + "="*80)
-    print(f"🔍 SINGLE EXAMPLE PREDICTION - DETAILED ANALYSIS")
+    print(f"🔍 LAYER-BY-LAYER ANALYSIS - SIMPLIFIED VIEW")
     print(f"="*80)
     
-    print(f"\n📊 [Input Analysis]")
+    print(f"\n📊 [INPUTS]")
     print(f"    Token input shape: {token_input.shape}")
-    print(f"    One-hot input shape: {onehot_input.shape}")
     print(f"    Token sequence: {token_input[0]}")
-    print(f"    One-hot matrix shape: {onehot_input[0].shape}")
+    print(f"    One-hot input shape: {onehot_input.shape}")
     if label is not None:
         print(f"    True label: {label}")
     
-    print(f"\n🚀 [Prediction Process]")
-    print(f"    Running forward pass through the model...")
+    # Create intermediate models to extract outputs at key stages
+    print(f"\n" + "="*80)
+    print(f"STAGE-BY-STAGE PROCESSING")
+    print(f"="*80)
     
-    # Full per-layer input/output tracing
-    print(f"\n🧭 [Full Layer-by-Layer Trace]")
+    # Stage 1: Input & Tokenization
+    print(f"\n📥 [STAGE 1: INPUT & TOKENIZATION]")
+    print(f"    Token Input: {token_input.shape} → {token_input[0]}")
+    print(f"    One-hot Input: {onehot_input.shape}")
+    
+    # Stage 2: Embeddings (BERT branch)
+    print(f"\n🔤 [STAGE 2: EMBEDDINGS - BERT Branch]")
     try:
-        layer_inputs = []
-        layer_outputs = []
-        layer_names = []
-        for layer in model.layers:
-            try:
-                # Some layers have multiple inputs/outputs
-                inp_t = layer.input
-                out_t = layer.output
-                layer_inputs.append(inp_t)
-                layer_outputs.append(out_t)
-                layer_names.append(layer.name)
-            except Exception:
-                # Skip layers that do not expose tensors in functional graph
-                continue
-
-        # Build a single probe model that outputs all inputs and outputs of each layer
-        probe_model = Model(
-            inputs=model.inputs,
-            outputs=list(layer_inputs) + list(layer_outputs)
-        )
-
-        probe_values = probe_model.predict([token_input, onehot_input], verbose=0)
-
-        n = len(layer_names)
-        print(f"    Tracing {n} layers (inputs and outputs)...")
-
-        def normalize_array(x):
-            # Handle Keras returning lists/tuples for some layers
-            if isinstance(x, (list, tuple)) and len(x) > 0:
-                x = x[0]
-            return x
-
-        def full_preview(arr):
-            arr = normalize_array(arr)
-            try:
-                # If there is a batch dimension of 1, unwrap it for readability
-                if hasattr(arr, 'ndim') and arr.ndim >= 1 and arr.shape[0] == 1:
-                    arr_to_print = arr[0]
-                else:
-                    arr_to_print = arr
-
-                # Decide whether to print entire array or truncate
-                max_elems = 4096  # safety cap
-                total = np.prod(arr_to_print.shape) if hasattr(arr_to_print, 'shape') else 0
-                if total and total <= max_elems:
-                    return np.array2string(arr_to_print, precision=6, separator=", ")
-                else:
-                    flat = np.asarray(arr_to_print).ravel()
-                    head = min(flat.size, 256)
-                    return f"{np.array2string(flat[:head], precision=6, separator=', ')} ... (truncated {flat.size-head} of {flat.size})"
-            except Exception:
-                return str(arr)
-
-        for i, lname in enumerate(layer_names):
-            # Fetch input and output arrays for this layer
-            tin = probe_values[i]
-            tout = probe_values[n + i]
-
-            # Format shapes
-            tin_shape = getattr(normalize_array(tin), 'shape', None)
-            tout_shape = getattr(normalize_array(tout), 'shape', None)
-
-            print(f"\n    ➤ Layer [{i+1:02d}/{n}] {lname} ({model.get_layer(lname).__class__.__name__})")
-            print(f"       - Input shape:  {tin_shape}")
-            print(f"       - Output shape: {tout_shape}")
-            try:
-                print(f"       - Input sample:  {full_preview(tin)}")
-                print(f"       - Output sample: {full_preview(tout)}")
-            except Exception:
-                print(f"       - Samples: <unavailable>")
+        token_emb_layer = model.get_layer('token_embedding')
+        token_emb_model = Model(inputs=model.input[0], outputs=token_emb_layer.output)
+        token_emb = token_emb_model.predict(token_input, verbose=0)
+        print(f"    Token Embedding Output Shape: {token_emb.shape}")
+        print(f"    Complete Token Embedding Output:")
+        print(f"{token_emb[0]}")
+        
+        # Position embedding
+        pos_emb_layer = model.get_layer('position_embedding')
+        print(f"\n    Position Embedding: (26, 128) - learned positional encodings")
+        
+        # Combined embedding (after Add layer)
+        add_layer = model.get_layer('add')
+        add_model = Model(inputs=model.inputs, outputs=add_layer.output)
+        combined_emb = add_model.predict([token_input, onehot_input], verbose=0)
+        print(f"\n    Combined Embedding (Token + Position) Output Shape: {combined_emb.shape}")
+        print(f"    Complete Combined Embedding Output:")
+        print(f"{combined_emb[0]}")
     except Exception as e:
-        print(f"    Full layer-by-layer trace skipped due to error: {e}")
-
-    # Get intermediate outputs for detailed analysis
-    print(f"\n🔬 [CNN Branch Analysis]")
-    try:
-        cnn_branch = Model(model.inputs, model.get_layer('concatenate_1').output)
-        cnn_output = cnn_branch([token_input, onehot_input])
-        print(f"    CNN branch output shape: {cnn_output.shape}")
-        print(f"    CNN branch sample values: {cnn_output[0][:5]}")
-    except:
-        print(f"    CNN branch analysis skipped (layer name issue)")
+        print(f"    Embedding analysis error: {e}")
     
-    print(f"\n🤖 [BERT Branch Analysis]")
+    # Stage 3: CNN Branch
+    print(f"\n🔬 [STAGE 3: CNN BRANCH]")
     try:
-        # We need to get the BERT output before GRU
-        bert_embedding = model.get_layer('embedding_1').output
-        bert_transformer = Model(model.inputs, bert_embedding)
-        bert_emb = bert_transformer([token_input, onehot_input])
-        print(f"    BERT embedding shape: {bert_emb.shape}")
-        print(f"    BERT embedding sample values: {bert_emb[0][0][:5]}")
-    except:
-        print(f"    BERT branch analysis skipped (layer name issue)")
+        # Find the reshape layer after CNN processing
+        for layer in model.layers:
+            if 'reshape' in layer.name.lower() and hasattr(layer, 'output'):
+                cnn_model = Model(inputs=model.inputs, outputs=layer.output)
+                cnn_output = cnn_model.predict([token_input, onehot_input], verbose=0)
+                print(f"    CNN Branch Output Shape: {cnn_output.shape}")
+                print(f"    Complete CNN Branch Output:")
+                print(f"{cnn_output[0]}")
+                break
+    except Exception as e:
+        print(f"    CNN analysis error: {e}")
     
-    print(f"\n🔄 [GRU Processing Analysis]")
+    # Stage 4: BERT Transformers
+    print(f"\n🤖 [STAGE 4: BERT TRANSFORMERS]")
     try:
-        # Get outputs after GRU layers
-        cnn_gru = Model(model.inputs, model.get_layer('bidirectional_2').output)
-        cnn_gru_out = cnn_gru([token_input, onehot_input])
-        print(f"    CNN GRU output shape: {cnn_gru_out.shape}")
-        print(f"    CNN GRU sample values: {cnn_gru_out[0][:5]}")
+        # Find the last dense layer in BERT branch (before GRU)
+        for layer in model.layers:
+            if layer.name.startswith('dense') and 'relu' in str(layer.activation):
+                # Check if this is the BERT final projection (80 units)
+                if hasattr(layer, 'units') and layer.units == 80:
+                    bert_model = Model(inputs=model.inputs, outputs=layer.output)
+                    bert_output = bert_model.predict([token_input, onehot_input], verbose=0)
+                    print(f"    BERT Branch Output Shape (after Transformers): {bert_output.shape}")
+                    print(f"    Complete BERT Branch Output:")
+                    print(f"{bert_output[0]}")
+                    break
+    except Exception as e:
+        print(f"    BERT analysis error: {e}")
+    
+    # Stage 5: BiGRU Processing
+    print(f"\n🔄 [STAGE 5: BiGRU PROCESSING]")
+    try:
+        # Find BiGRU layers
+        bigru_layers = [l for l in model.layers if 'custom_bi_gru' in l.name.lower()]
+        if len(bigru_layers) >= 2:
+            # CNN BiGRU
+            cnn_gru_model = Model(inputs=model.inputs, outputs=bigru_layers[0].output)
+            cnn_gru_out = cnn_gru_model.predict([token_input, onehot_input], verbose=0)
+            print(f"    CNN BiGRU Output Shape: {cnn_gru_out.shape} (40 units × 2 directions = 80)")
+            print(f"    Complete CNN BiGRU Output:")
+            print(f"{cnn_gru_out[0]}")
+            
+            # BERT BiGRU
+            bert_gru_model = Model(inputs=model.inputs, outputs=bigru_layers[1].output)
+            bert_gru_out = bert_gru_model.predict([token_input, onehot_input], verbose=0)
+            print(f"\n    BERT BiGRU Output Shape: {bert_gru_out.shape} (40 units × 2 directions = 80)")
+            print(f"    Complete BERT BiGRU Output:")
+            print(f"{bert_gru_out[0]}")
+    except Exception as e:
+        print(f"    BiGRU analysis error: {e}")
+    
+    # Stage 6: Fusion
+    print(f"\n🔗 [STAGE 6: FUSION (Weighted Combination)]")
+    try:
+        # Find the Add layer for fusion
+        add_layers = [l for l in model.layers if l.name.startswith('add') and l != add_layer]
+        if add_layers:
+            fusion_model = Model(inputs=model.inputs, outputs=add_layers[0].output)
+            fusion_out = fusion_model.predict([token_input, onehot_input], verbose=0)
+            print(f"    Fusion Layer Output Shape (0.2×CNN + 0.8×BERT): {fusion_out.shape}")
+            print(f"    Complete Fusion Layer Output:")
+            print(f"{fusion_out[0]}")
+    except Exception as e:
+        print(f"    Fusion analysis error: {e}")
+    
+    # Stage 7: Dense Layers
+    print(f"\n🎯 [STAGE 7: CLASSIFICATION HEAD]")
+    try:
+        # Find dense layers in classification head
+        dense_layers = [l for l in model.layers if l.name.startswith('dense')]
+        # Skip the BERT projection layer (80 units), get classification layers
+        classification_dense = [l for l in dense_layers if hasattr(l, 'units') and l.units in [128, 64, 2]]
         
-        bert_gru = Model(model.inputs, model.get_layer('bidirectional_3').output)
-        bert_gru_out = bert_gru([token_input, onehot_input])
-        print(f"    BERT GRU output shape: {bert_gru_out.shape}")
-        print(f"    BERT GRU sample values: {bert_gru_out[0][:5]}")
+        if len(classification_dense) >= 1:
+            dense1_model = Model(inputs=model.inputs, outputs=classification_dense[0].output)
+            dense1_out = dense1_model.predict([token_input, onehot_input], verbose=0)
+            print(f"    Dense Layer 1 Output Shape (128 units, ReLU): {dense1_out.shape}")
+            print(f"    Complete Dense Layer 1 Output:")
+            print(f"{dense1_out[0]}")
         
-        print(f"\n🔗 [Fusion Analysis]")
-        print(f"    CNN contribution (0.2x): {cnn_gru_out[0][:5] * 0.2}")
-        print(f"    BERT contribution (0.8x): {bert_gru_out[0][:5] * 0.8}")
-        fusion_layer = Model(model.inputs, model.get_layer('add_1').output)
-        fusion_out = fusion_layer([token_input, onehot_input])
-        print(f"    Fused output shape: {fusion_out.shape}")
-        print(f"    Fused sample values: {fusion_out[0][:5]}")
-    except:
-        print(f"    GRU and fusion analysis skipped (layer name issue)")
-    
-    print(f"\n🎯 [Classification Analysis]")
-    try:
-        dense1_layer = Model(model.inputs, model.get_layer('dense_15').output)
-        dense1_out = dense1_layer([token_input, onehot_input])
-        print(f"    Dense layer 1 output shape: {dense1_out.shape}")
-        print(f"    Dense layer 1 sample values: {dense1_out[0][:5]}")
+        if len(classification_dense) >= 2:
+            dense2_model = Model(inputs=model.inputs, outputs=classification_dense[1].output)
+            dense2_out = dense2_model.predict([token_input, onehot_input], verbose=0)
+            print(f"\n    Dense Layer 2 Output Shape (64 units, ReLU): {dense2_out.shape}")
+            print(f"    Complete Dense Layer 2 Output:")
+            print(f"{dense2_out[0]}")
         
-        dense2_layer = Model(model.inputs, model.get_layer('dense_16').output)
-        dense2_out = dense2_layer([token_input, onehot_input])
-        print(f"    Dense layer 2 output shape: {dense2_out.shape}")
-        print(f"    Dense layer 2 sample values: {dense2_out[0][:5]}")
-    except:
-        print(f"    Classification analysis skipped (layer name issue)")
+        # Dropout
+        dropout_layers = [l for l in model.layers if 'dropout' in l.name.lower()]
+        if dropout_layers:
+            print(f"\n    Dropout (rate=0.35): Applied")
+    except Exception as e:
+        print(f"    Dense layers analysis error: {e}")
     
-    print(f"\n🎲 [Final Prediction]")
+    # Stage 8: Final Output
+    print(f"\n🎲 [STAGE 8: FINAL OUTPUT]")
     prediction = model.predict([token_input, onehot_input], verbose=0)
-    print(f"    Raw prediction probabilities: {prediction[0]}")
-    print(f"    Predicted class: {np.argmax(prediction[0])}")
+    print(f"    Final Output Layer Shape (2 units, Softmax): {prediction.shape}")
+    print(f"    Complete Final Output (Probabilities):")
+    print(f"{prediction[0]}")
+    print(f"\n    Predicted class: {np.argmax(prediction[0])} ({'Off-target' if np.argmax(prediction[0]) == 0 else 'On-target'})")
     print(f"    Confidence: {np.max(prediction[0]):.4f}")
     
     if label is not None:
         correct = "✅ CORRECT" if np.argmax(prediction[0]) == label else "❌ INCORRECT"
-        print(f"    Prediction result: {correct}")
+        print(f"    Ground truth: {label} ({'Off-target' if label == 0 else 'On-target'})")
+        print(f"    Result: {correct}")
     
     print(f"\n" + "="*80)
     return prediction
