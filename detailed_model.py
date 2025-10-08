@@ -57,14 +57,24 @@ def inception_cnn_branch(inp, max_len=26):
     print(f"    [CNN Branch] Input shape: {inp.shape}")
     print(f"    [CNN Branch] Max sequence length: {max_len}")
     
+    # Expand dims to 4D for Conv2D: (batch, time=max_len, channels=7, 1)
+    x4d = layers.Lambda(lambda t: tf.expand_dims(t, axis=-1))(inp)
+    print(f"    [CNN Branch] Expanded to 4D for Conv2D: {x4d.shape}")
+
     convs = []
     kernel_sizes = [5, 15, 25, 35]
     print(f"    [CNN Branch] Using kernel sizes: {kernel_sizes}")
     
     for i, k in enumerate(kernel_sizes):
-        print(f"    [CNN Branch] Conv1D {i+1}/4: kernel_size={k}, filters=80, padding='same'")
-        c = layers.Conv1D(filters=80, kernel_size=k, padding="same", activation="relu")(inp)
-        print(f"    [CNN Branch] Conv1D {i+1}/4 output shape: {c.shape}")
+        # Compute asymmetric padding to preserve time length like padding='same' in Conv1D
+        p_left = k // 2
+        p_right = k - 1 - p_left
+        print(f"    [CNN Branch] Conv2D {i+1}/4: kernel=(" + str(k) + ", 7), filters=80, time-padding=({p_left},{p_right}), width-padding=(0,0), activation='relu'")
+        padded = layers.ZeroPadding2D(padding=((p_left, p_right), (0, 0)))(x4d)
+        c2d = layers.Conv2D(filters=80, kernel_size=(k, 7), padding='valid', activation='relu')(padded)
+        # c2d shape: (batch, time, 1, 80) -> squeeze width dim to get (batch, time, 80)
+        c = layers.Lambda(lambda t: tf.squeeze(t, axis=2))(c2d)
+        print(f"    [CNN Branch] Conv2D {i+1}/4 output shape (after squeeze): {c.shape}")
         convs.append(c)
     
     print(f"    [CNN Branch] Concatenating {len(convs)} convolution outputs...")

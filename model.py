@@ -105,12 +105,11 @@ def build_crispr_bert_model(vocab_size, max_len, small_debug=False):
     x_cnn = CNN_branch(inp_hot, max_len=max_len)
     x_bert = bert_branch(inp_tok, vocab_size, max_len, small_debug=small_debug)
 
-    # ========== BiGRU Layer (Keras built-in) - COMMENTED OUT ==========
+
     # x_cnn = layers.Bidirectional(layers.GRU(40, return_sequences=False))(x_cnn)
     # x_bert = layers.Bidirectional(layers.GRU(40, return_sequences=False))(x_bert)
     
-    # ========== Custom BiGRU Implementation from Scratch ==========
-    # Custom GRU Cell
+    # BiGRU Implementation from Scratch 
     class CustomGRUCell(layers.Layer):
         """Custom GRU cell with update gate, reset gate, and candidate hidden state"""
         def __init__(self, units, **kwargs):
